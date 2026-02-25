@@ -13,7 +13,7 @@ from dataclasses import dataclass, is_dataclass, asdict
 import DSA.pykoopman as pykoopman
 import pydmd
 from DSA.pykoopman.regression import DMDc, EDMDc
-from typing import Union, Mapping, Any, ClassVar, Final
+from typing import Union, Mapping, Any, ClassVar
 import warnings
 
 
@@ -38,6 +38,18 @@ CAST_TYPES = {
     "reduced_rank_reg": bool,
     "send_to_cpu": bool,
 }
+
+
+def _fit_local_dmd_worker(dmd):
+    """Fit one local DMD object and return it (for process-safe parallel updates)."""
+    dmd.fit()
+    return dmd
+
+
+def _fit_external_dmd_worker(dmd, X):
+    """Fit one external DMD object on X and return it."""
+    dmd.fit(X)
+    return dmd
 
 
 # ___Example config dataclasses for DMD #
@@ -112,6 +124,7 @@ class SubspaceDMDcConfig:
     lamb: float = 0
     backend: str = "n4sid"
 
+
 @dataclass()
 class DMDcConfig:
     """
@@ -132,6 +145,7 @@ class DMDcConfig:
         delay_interval (int): Interval between delays in the Hankel matrix.
             Default is 1 (consecutive time steps).
     """
+
     n_delays: int = 1
     rank_input: int = None
     rank_output: int = None
@@ -161,8 +175,9 @@ class SimilarityTransformDistConfig:
     iters: int = 1500
     score_method: Literal["angular", "euclidean", "wasserstein"] = "angular"
     lr: float = 5e-3
-    #class variable, set as final to indicate that it's fixed and immutable
-    compare: ClassVar[Final] = "state" 
+    # class variable, set as final to indicate that it's fixed and immutable
+    compare: ClassVar[str] = "state"
+
 
 @dataclass()
 class ControllabilitySimilarityTransformDistConfig:
@@ -178,7 +193,7 @@ class ControllabilitySimilarityTransformDistConfig:
             Default is "euclidean".
         compare (str): What to compare between systems.
             'control' compares only control operators,
-            'joint' compares both control and state operators simultaneousl. 
+            'joint' compares both control and state operators simultaneousl.
             Default is 'joint'.
             If you pass in 'state', it will throw an error -> use SimilarityTransformDistConfig Instead
         align_inputs (bool): whether to learn a C_u transformation that aligns the input representations as well
@@ -187,9 +202,10 @@ class ControllabilitySimilarityTransformDistConfig:
     """
 
     score_method: Literal["euclidean", "angular"] = "euclidean"
-    compare: Literal["joint","control"] = "joint"
+    compare: Literal["joint", "control"] = "joint"
     align_inputs: bool = False
     return_distance_components: bool = False
+
 
 class GeneralizedDSA:
     """
@@ -298,23 +314,26 @@ class GeneralizedDSA:
         self.X_control = X_control
         self.Y_control = Y_control
 
-        if isinstance(simdist_config, type): #if it's the class itself (not an object) initialize
+        if isinstance(
+            simdist_config, type
+        ):  # if it's the class itself (not an object) initialize
             simdist_config = simdist_config()
         self.simdist_config = simdist_config
 
-
         if is_dataclass(simdist_config):
             self.simdist_config = asdict(self.simdist_config)
-        
+
         # Infer similarity_class from simdist_config if not provided
         if similarity_class is None:
-            compare = self.simdist_config.get('compare', 'state')
-            if compare == 'state':
+            compare = self.simdist_config.get("compare", "state")
+            if compare == "state":
                 similarity_class = SimilarityTransformDist
-            elif compare in ['joint', 'control']:
+            elif compare in ["joint", "control"]:
                 similarity_class = ControllabilitySimilarityTransformDist
             else:
-                raise ValueError(f"Invalid compare value in simdist_config: {compare}. Must be 'state', 'joint', or 'control'.")
+                raise ValueError(
+                    f"Invalid compare value in simdist_config: {compare}. Must be 'state', 'joint', or 'control'."
+                )
 
         self.device = device
         self.n_jobs = n_jobs
@@ -339,14 +358,16 @@ class GeneralizedDSA:
         # Process DMD keyword arguments from **dmd_kwargs
         # These are parameters like n_delays, rank, etc., that are specific to DMDs
         # and need to be broadcasted according to X and Y data structure.
-        if isinstance(dmd_config,type):
+        if isinstance(dmd_config, type):
             dmd_config = dmd_config()
         if is_dataclass(dmd_config):
-            dmd_config = asdict(dmd_config)
-             
-        self.dmd_config = (
-            {}
-        )  
+            try:
+                dmd_config = asdict(dmd_config)
+            except TypeError:
+                # Fallback for unusual dataclass-like config objects.
+                fields = getattr(dmd_config, "__dataclass_fields__", {})
+                dmd_config = {name: getattr(dmd_config, name) for name in fields}
+        self.dmd_config = {}
 
         for key, value in dmd_config.items():
             cast_type = CAST_TYPES.get(key)
@@ -364,6 +385,7 @@ class GeneralizedDSA:
         self._check_dmd_simdist_compatibility(dmd_class, similarity_class)
         self._dmd_api_source(dmd_class)
         self._initiate_dmds()
+        self.similarity_class = similarity_class
         self.simdist = similarity_class(**self.simdist_config)
 
     def _initiate_dmds(self):
@@ -454,44 +476,47 @@ class GeneralizedDSA:
             raise ValueError(
                 f"dmd_class {dmd_class.__name__} from unknown module {module_name}"
             )
-    def update_compare_method(self, compare='joint', simdist_config=None):
+
+    def update_compare_method(self, compare="joint", simdist_config=None):
         """
         Update the similarity comparison method and adapt the configuration.
         This method can be called to switch between different comparison modes
         (state-only, control-only, or joint) after initialization.
-        
+
         Parameters
         ----------
         compare : str
             'state', 'joint', or 'control'
         simdist_config : dict, dataclass, or None
             Configuration to adapt. If None, uses current self.simdist_config
-        
+
         Raises
         ------
         ValueError
             If the comparison method is incompatible with the DMD class
         """
         # Validate compare parameter
-        valid_compare_values = ['state', 'joint', 'control']
+        valid_compare_values = ["state", "joint", "control"]
         if compare not in valid_compare_values:
             raise ValueError(
                 f"compare must be one of {valid_compare_values}, got {compare}"
             )
-        
+
         # Use current config if none provided
         if simdist_config is None:
             simdist_config = self.simdist_config
-        
+
         # Convert to dict if needed
         if isinstance(simdist_config, type):  # If it's a class
             simdist_config = simdist_config()
         if is_dataclass(simdist_config):
             simdist_config = asdict(simdist_config)
-        
+
         # Check if return_distance_components is changing
-        old_return_components = self.simdist_config.get('return_distance_components', False)
-        new_return_components = simdist_config.get('return_distance_components', False)
+        old_return_components = self.simdist_config.get(
+            "return_distance_components", False
+        )
+        new_return_components = simdist_config.get("return_distance_components", False)
         if old_return_components != new_return_components:
             warnings.warn(
                 f"Changing return_distance_components from {old_return_components} to "
@@ -499,60 +524,66 @@ class GeneralizedDSA:
                 f"Previously computed similarities (self.sims) will be cleared. "
                 f"You will need to recompute similarities by calling score() or fit_score()."
             )
-        
-        
+
         if compare == "state":
             simdist_class = SimilarityTransformDist
             # Extract only parameters relevant to SimilarityTransformDist
             adapted_config = {
-                'score_method': simdist_config.get('score_method', 'angular'),
-                'iters': simdist_config.get('iters', 1500),
-                'lr': simdist_config.get('lr', 5e-3),
-                'device': simdist_config.get('device', self.device),
-                'verbose': simdist_config.get('verbose', self.verbose),
+                "score_method": simdist_config.get("score_method", "angular"),
+                "iters": simdist_config.get("iters", 1500),
+                "lr": simdist_config.get("lr", 5e-3),
+                "eps": simdist_config.get("eps", 1e-5),
+                "device": simdist_config.get("device", self.device),
+                "verbose": simdist_config.get("verbose", self.verbose),
+                "try_permutation": simdist_config.get("try_permutation", False),
             }
             # Validate score_method for SimilarityTransformDist
-            if adapted_config['score_method'] not in ['angular', 'euclidean', 'wasserstein']:
+            if adapted_config["score_method"] not in [
+                "angular",
+                "euclidean",
+                "wasserstein",
+            ]:
                 warnings.warn(
                     f"score_method '{adapted_config['score_method']}' may not be valid "
                     f"for SimilarityTransformDist, valid options: angular, euclidean, wasserstein"
                 )
             # State comparison doesn't have return_distance_components, so always treated as False
-            
-            
+
         else:  # 'joint' or 'control'
             simdist_class = ControllabilitySimilarityTransformDist
             # Extract only parameters relevant to ControllabilitySimilarityTransformDist
             adapted_config = {
-                'score_method': simdist_config.get('score_method', 'euclidean'),
-                'compare': compare,  # Override with the method parameter
-                'align_inputs': simdist_config.get('align_inputs', False),
-                'return_distance_components': new_return_components,
+                "score_method": simdist_config.get("score_method", "euclidean"),
+                "compare": compare,  # Override with the method parameter
+                "align_inputs": simdist_config.get("align_inputs", False),
+                "return_distance_components": new_return_components,
             }
             # Validate score_method for ControllabilitySimilarityTransformDist
-            if adapted_config['score_method'] not in ['angular', 'euclidean']:
+            if adapted_config["score_method"] not in ["angular", "euclidean"]:
                 warnings.warn(
                     f"score_method '{adapted_config['score_method']}' may not be valid "
                     f"for ControllabilitySimilarityTransformDist, valid options: angular, euclidean"
                 )
-        
+
         # Check compatibility between DMD and new simdist class
         # This will update self.dmd_has_control and self.simdist_has_control
         self._check_dmd_simdist_compatibility(self.dmd_class, simdist_class)
-        
+
         if self.simdist_has_control:
             if self.X_control is None and self.Y_control is None:
                 raise ValueError(
                     f"Cannot use compare='{compare}' which requires control matrices, "
                     f"but no control data (X_control or Y_control) was provided"
                 )
-        
+
         self.simdist_config = adapted_config
         self.simdist = simdist_class(**adapted_config)
-        
+
         if self.verbose:
-            print(f"Updated similarity method to compare='{compare}' using {simdist_class.__name__}")
-        
+            print(
+                f"Updated similarity method to compare='{compare}' using {simdist_class.__name__}"
+            )
+
         return simdist_class, adapted_config
 
     def fit_dmds(self):
@@ -562,24 +593,26 @@ class GeneralizedDSA:
             )  # -1 means use all available cores
 
             if self.dmd_api_source == "local_dmd":
-                for idx, dmd_sets in enumerate(self.dmds):
-                    gen = Parallel(n_jobs=n_jobs, return_as="generator_unordered")(
-                        delayed(_fit_dmd_worker)(dmd) for dmd in dmd_sets
-                    )
+                for set_idx, dmd_sets in enumerate(self.dmds):
                     if self.verbose:
-                        gen = _tqdm(gen, total=len(dmd_sets),
-                                        desc=f"Fitting DMDs ({n_jobs} jobs)")
-                    self.dmds[idx] = list(gen)
+                        print(
+                            f"Fitting {len(dmd_sets)} DMDs in parallel with {n_jobs} jobs"
+                        )
+                    fitted = Parallel(n_jobs=n_jobs, prefer="threads")(
+                        delayed(_fit_local_dmd_worker)(dmd) for dmd in dmd_sets
+                    )
+                    self.dmds[set_idx] = fitted
             else:
-                for idx, (dmd_list, dat) in enumerate(zip(self.dmds, self.data)):
-                    gen = Parallel(n_jobs=n_jobs, return_as="generator_unordered")(
-                        delayed(_fit_dmd_with_data_worker)(dmd, Xi)
+                for set_idx, (dmd_list, dat) in enumerate(zip(self.dmds, self.data)):
+                    if self.verbose:
+                        print(
+                            f"Fitting {len(dmd_list)} DMDs in parallel with {n_jobs} jobs"
+                        )
+                    fitted = Parallel(n_jobs=n_jobs, prefer="threads")(
+                        delayed(_fit_external_dmd_worker)(dmd, Xi)
                         for dmd, Xi in zip(dmd_list, dat)
                     )
-                    if self.verbose:
-                        gen = _tqdm(gen, total=len(dmd_list),
-                                        desc=f"Fitting DMDs ({n_jobs} jobs)")
-                    self.dmds[idx] = list(gen)
+                    self.dmds[set_idx] = fitted
         else:
             # Sequential processing
             if self.dmd_api_source == "local_dmd":
@@ -619,13 +652,19 @@ class GeneralizedDSA:
                 if self.Y_control is not None and not isinstance(self.Y_control, list):
                     self.Y_control = [self.Y_control]
                 if tensor_or_np(self.Y[0]):
-                    has_control = self.X_control is not None or self.Y_control is not None
+                    has_control = (
+                        self.X_control is not None or self.Y_control is not None
+                    )
                     if has_control:
-                        suggestion = ("If arrays within X (and Y) are samples from the same system, "
-                                     "switch to using GeneralizedDSA(X=[X,Y], X_control=[X_control,Y_control], Y=None, Y_control=None.)")
+                        suggestion = (
+                            "If arrays within X (and Y) are samples from the same system, "
+                            "switch to using GeneralizedDSA(X=[X,Y], X_control=[X_control,Y_control], Y=None, Y_control=None.)"
+                        )
                     else:
-                        suggestion = ("If arrays within X (and Y) are samples from the same system, "
-                                     "switch to using GeneralizedDSA(X=[X,Y], Y=None)")
+                        suggestion = (
+                            "If arrays within X (and Y) are samples from the same system, "
+                            "switch to using GeneralizedDSA(X=[X,Y], Y=None)"
+                        )
                     warnings.warn(
                         "When using cross-comparison with a list of arrays, gDSA treats each array as its own system.\n"
                         + suggestion
@@ -678,7 +717,7 @@ class GeneralizedDSA:
                         assert len(param[i]) >= len(data)
                         out.append(param[i][: len(data)])
         elif (
-            isinstance(param, (int, float, np.integer,str))
+            isinstance(param, (int, float, np.integer, str))
             or param in {None, "None", "none"}
             or (
                 hasattr(param, "__module__")
@@ -717,19 +756,19 @@ class GeneralizedDSA:
     def get_compare_objects(self, dmd):
         """
         Get the comparison objects for similarity computation.
-        
+
         For Wasserstein distance on states, returns pre-computed eigenvalues to avoid
         redundant eigendecomposition. Otherwise returns the full DMD matrix.
-        
+
         Parameters
         ----------
         dmd : DMD object
             The fitted DMD model
-        
+
         Returns
         -------
         matrix or eigenvalues : torch.Tensor or np.ndarray
-            Either the state matrix (for angular/euclidean metrics) or 
+            Either the state matrix (for angular/euclidean metrics) or
             eigenvalues as 1D complex array (for Wasserstein distance)
         """
         if self.dmd_api_source == "local_dmd":
@@ -741,15 +780,17 @@ class GeneralizedDSA:
                 "DSA is not currently compatible with pydmd due to \
                 data structure incompatibility. Please use pykoopman instead."
             )
-        
+
         # Return eigenvalues directly for Wasserstein distance on states
-        if (not self.simdist_has_control 
-            and self.simdist_config.get("score_method") == "wasserstein"):
+        if (
+            not self.simdist_has_control
+            and self.simdist_config.get("score_method") == "wasserstein"
+        ):
             if not isinstance(matrix, torch.Tensor):
                 matrix = torch.from_numpy(matrix).float()
             eigenvalues = torch.linalg.eig(matrix).eigenvalues
             return eigenvalues
-        
+
         return matrix
 
     def get_dmd_control_matrix(self, dmd):
@@ -796,11 +837,13 @@ class GeneralizedDSA:
         self.sims = np.zeros((len(self.dmds[0]), len(self.dmds[ind2]), n_sims))
 
         # Pre-compute comparison objects (matrices or eigenvalues) to avoid redundant computation
-        if (not self.simdist_has_control 
-            and self.simdist_config.get("score_method") == "wasserstein"):
+        if (
+            not self.simdist_has_control
+            and self.simdist_config.get("score_method") == "wasserstein"
+        ):
             if self.verbose:
                 print("Pre-computing eigenvalues for Wasserstein distance...")
-        
+
         cache_iter = lambda items, desc: (
             _tqdm(items, desc=desc) if self.verbose else items
         )
@@ -820,26 +863,31 @@ class GeneralizedDSA:
 
         self.cached_compare_objects = [cached_x, cached_y]
 
-        def compute_similarity(i, j):
-            if self.method == "self-pairwise" and j >= i:
-                return None
+        def compute_similarity_chunk(chunk):
+            # One simdist instance per worker-chunk: avoids thread-unsafe global
+            # state while removing huge per-pair object construction overhead.
+            simdist = self.similarity_class(**self.simdist_config)
+            out = []
+            for i, j in chunk:
+                if self.method == "self-pairwise" and j >= i:
+                    continue
 
-            simdist_args = [
-                self.cached_compare_objects[0][i],
-                self.cached_compare_objects[1][j],
-            ]
+                simdist_args = [
+                    self.cached_compare_objects[0][i],
+                    self.cached_compare_objects[1][j],
+                ]
 
-            if self.simdist_has_control and self.dmd_has_control:
-                simdist_args.extend(
-                    [
-                        self.get_dmd_control_matrix(self.dmds[0][i]),
-                        self.get_dmd_control_matrix(self.dmds[ind2][j]),
-                    ]
-                )
-            
-            sim = self.simdist.fit_score(*simdist_args)
+                if self.simdist_has_control and self.dmd_has_control:
+                    simdist_args.extend(
+                        [
+                            self.get_dmd_control_matrix(self.dmds[0][i]),
+                            self.get_dmd_control_matrix(self.dmds[ind2][j]),
+                        ]
+                    )
 
-            return (i, j, sim)
+                sim = simdist.fit_score(*simdist_args)
+                out.append((i, j, sim))
+            return out
 
         pairs = []
         for i in range(len(self.dmds[0])):
@@ -849,27 +897,60 @@ class GeneralizedDSA:
 
         if self.n_jobs != 1 and self.simdist.score_method != 'wasserstein': #wasserstein is already fast
             n_jobs = self.n_jobs if self.n_jobs > 0 else -1
-            gen = Parallel(n_jobs=n_jobs, return_as="generator_unordered")(
-                delayed(compute_similarity)(i, j) for i, j in pairs
-            )
             if self.verbose:
-                gen = _tqdm(gen, total=len(pairs),
-                                desc=f"Scoring DMD pairs ({n_jobs} jobs)")
-            results = list(gen)
-        else:
+                print(
+                    f"Computing {len(pairs)} DMD similarities in parallel with {n_jobs} jobs"
+                )
+            # Chunk pair jobs to keep memory bounded and show deterministic progress.
+            # Keep chunks small so progress updates are frequent on very large runs.
+            chunk_size = max(16, min(128, len(pairs) // max(1, n_jobs * 8)))
+            pair_chunks = [
+                pairs[k : k + chunk_size] for k in range(0, len(pairs), chunk_size)
+            ]
+            if self.verbose:
+                print(f"Scoring chunk_size={chunk_size}, n_chunks={len(pair_chunks)}")
             loop = (
-                pairs
+                pair_chunks
                 if not self.verbose
-                else _tqdm(pairs, desc="Scoring DMD pairs")
+                else _tqdm(pair_chunks, desc="Computing DMD similarities")
             )
-            results = [compute_similarity(i, j) for i, j in loop]
+            results = []
+            for chunk in loop:
+                # Dispatch a few larger subchunks per round to minimize
+                # joblib/task overhead and repeated object construction.
+                n_sub = min(max(1, n_jobs), len(chunk))
+                chunk_arr = np.array(chunk, dtype=np.int64)
+                subchunks = [
+                    sub.tolist()
+                    for sub in np.array_split(chunk_arr, n_sub)
+                    if len(sub) > 0
+                ]
+                chunk_results = Parallel(n_jobs=n_jobs, prefer="threads")(
+                    delayed(compute_similarity_chunk)(subchunk)
+                    for subchunk in subchunks
+                )
+                for batch in chunk_results:
+                    results.extend(batch)
+        else:
+            chunk_size_serial = max(128, min(2048, len(pairs)))
+            pair_chunks = [
+                pairs[k : k + chunk_size_serial]
+                for k in range(0, len(pairs), chunk_size_serial)
+            ]
+            loop = (
+                pair_chunks
+                if not self.verbose
+                else _tqdm(pair_chunks, desc="Computing DMD similarities")
+            )
+            results = []
+            for chunk in loop:
+                results.extend(compute_similarity_chunk(chunk))
 
         for result in results:
-            if result is not None:
-                i, j, sim = result
-                self.sims[i, j] = sim
-                if self.method == "self-pairwise":
-                    self.sims[j, i] = sim
+            i, j, sim = result
+            self.sims[i, j] = sim
+            if self.method == "self-pairwise":
+                self.sims[j, i] = sim
 
         if self.method == "default":
             return self.sims[0, 0].item()
@@ -886,7 +967,7 @@ class DSA(GeneralizedDSA):
         Y : None or np.array or torch.tensor or list of np.arrays or torch.tensors
             Second data matrix/matrices. If None, X is compared to itself pairwise.
         dmd_class : class
-            DMD class to use model fitting. Default is the local Havok, 
+            DMD class to use model fitting. Default is the local Havok,
             but pykoopman objects can be passed in, for example
         device : str
             Device to use for computation ('cpu' or 'cuda'). Default is 'cpu'.
@@ -903,8 +984,9 @@ class DSA(GeneralizedDSA):
                 rank (int): Rank for SVD truncation. If None, no truncation is performed.
                     Default is None.
                 lamb (float): Regularization parameter for ridge regression.
-                    Default is 0 (no regularization). 
+                    Default is 0 (no regularization).
     """
+
     def __init__(
         self,
         X,
@@ -914,15 +996,19 @@ class DSA(GeneralizedDSA):
         verbose=False,
         n_jobs=1,
         # simdist parameters
-        score_method: Literal["angular", "euclidean","wasserstein"] = "angular",
+        score_method: Literal["angular", "euclidean", "wasserstein"] = "angular",
         iters: int = 1500,
         lr: float = 5e-3,
+        eps: float = 1e-5,
+        try_permutation: bool = False,
         **dmd_kwargs,
     ):
         simdist_config = {
             "score_method": score_method,
             "iters": iters,
             "lr": lr,
+            "eps": eps,
+            "try_permutation": bool(try_permutation),
         }
 
         dmd_config = dmd_kwargs
@@ -957,8 +1043,8 @@ class InputDSA(GeneralizedDSA):
             Control data matrix/matrices for Y. Must be the same shape as Y.
         dmd_class : class
             DMD class to use for decomposition. Default is SubspaceDMDc.
-        dmd_config: class or dictionary containing parameters of the dmd model 
-        simdist_config: class or dictionary containing parameters used for comparison. 
+        dmd_config: class or dictionary containing parameters of the dmd model
+        simdist_config: class or dictionary containing parameters used for comparison.
             Depending on what is in here (e.g. compare = "state" versus "joint" or "input"),
             the type of comparison will be direclty inferred -- "state" yields standard DSA metric,
             "input" or "joint" yields the controlalbility metric.
@@ -970,6 +1056,7 @@ class InputDSA(GeneralizedDSA):
             Number of parallel jobs to use. Default is 1 (sequential).
 
     """
+
     def __init__(
         self,
         X,
@@ -999,6 +1086,6 @@ class InputDSA(GeneralizedDSA):
             verbose=verbose,
             n_jobs=n_jobs,
         )
-        
+
         assert X_control is not None, "InputDSA requires X_control to be provided"
         assert self.dmd_has_control, "InputDSA requires a DMD class with control"

@@ -15,7 +15,6 @@ except ImportError:
 
 
 def pad_zeros(A, B, device):
-
     with torch.no_grad():
         dim = max(A.shape[0], B.shape[0])
         A1 = torch.zeros((dim, dim)).float()
@@ -142,9 +141,10 @@ class SimilarityTransformDist:
         verbose=False,
         eps=1e-5,
         rescale_wasserstein=False,
-        compare: Final = 'state',
+        compare: Final = "state",
         differentiable=False,
         sinkhorn_reg=0.1,
+        try_permutation=False,
     ):
         """
         Parameters
@@ -188,10 +188,11 @@ class SimilarityTransformDist:
         self.B = None
         self.eps = eps
         self.rescale_wasserstein = rescale_wasserstein
-        self.wasserstein_compare = 'eig' # for backwards compatibility
+        self.wasserstein_compare = "eig"  # for backwards compatibility
         self.compare = compare
         self.differentiable = differentiable
         self.sinkhorn_reg = sinkhorn_reg
+        self.try_permutation = bool(try_permutation)
 
     def fit(
         self,
@@ -221,20 +222,18 @@ class SimilarityTransformDist:
         None
         """
         score_method = self.score_method if score_method is None else score_method
-        
+
         # Check if we received pre-computed eigenvalues (1D complex array) for Wasserstein
         precomputed_eigenvalues = False
         if score_method == "wasserstein":
             # Detect if inputs are 1D complex eigenvalues (torch.Tensor or numpy array)
             is_A_complex_1d = (
-                (isinstance(A, torch.Tensor) and A.ndim == 1 and torch.is_complex(A)) or
-                (isinstance(A, np.ndarray) and A.ndim == 1 and np.iscomplexobj(A))
-            )
+                isinstance(A, torch.Tensor) and A.ndim == 1 and torch.is_complex(A)
+            ) or (isinstance(A, np.ndarray) and A.ndim == 1 and np.iscomplexobj(A))
             is_B_complex_1d = (
-                (isinstance(B, torch.Tensor) and B.ndim == 1 and torch.is_complex(B)) or
-                (isinstance(B, np.ndarray) and B.ndim == 1 and np.iscomplexobj(B))
-            )
-            
+                isinstance(B, torch.Tensor) and B.ndim == 1 and torch.is_complex(B)
+            ) or (isinstance(B, np.ndarray) and B.ndim == 1 and np.iscomplexobj(B))
+
             if is_A_complex_1d and is_B_complex_1d:
                 precomputed_eigenvalues = True
                 # Convert to torch tensors if needed, then to (n, 2) format [real, imag]
@@ -242,13 +241,13 @@ class SimilarityTransformDist:
                     A = torch.from_numpy(A)
                 if isinstance(B, np.ndarray):
                     B = torch.from_numpy(B)
-                
+
                 a = torch.vstack([A.real, A.imag]).T.to(self.device)
                 b = torch.vstack([B.real, B.imag]).T.to(self.device)
                 # Store for compatibility with score()
                 self.A = A.to(self.device)
                 self.B = B.to(self.device)
-        
+
         if not precomputed_eigenvalues:
             # Original logic for matrices
             if isinstance(A, DMD):
@@ -262,7 +261,7 @@ class SimilarityTransformDist:
             A = A.to(self.device)
             B = B.to(self.device)
             self.A, self.B = A, B
-        
+
         lr = self.lr if lr is None else lr
         iters = self.iters if iters is None else iters
 
@@ -288,15 +287,13 @@ class SimilarityTransformDist:
             a, b = a.to(device), b.to(device)
 
             if self.differentiable:
-                self.score_star = sinkhorn2(
-                    a, b, self.M, reg=self.sinkhorn_reg
-                )
+                self.score_star = sinkhorn2(a, b, self.M, reg=self.sinkhorn_reg)
                 # No transport plan needed for differentiable mode
                 self.C_star = None
             else:
                 self.C_star = emd(a, b, self.M)
                 self.score_star = (
-                    emd2(a, b, self.M) #* a.shape[0]
+                    emd2(a, b, self.M)  # * a.shape[0]
                 )  # add scaling factor due to random matrix theory
                 # self.score_star = np.sum(self.C_star * self.M)
                 self.C_star = self.C_star / torch.linalg.norm(
@@ -308,17 +305,18 @@ class SimilarityTransformDist:
             self.losses, self.C_star, self.sim_net = self.optimize_C(
                 A, B, lr, iters, orthog=True, verbose=self.verbose
             )
-            # permute the first row and column of B then rerun the optimization
-            P = torch.eye(B.shape[0], device=self.device)
-            if P.shape[0] > 1:
-                P[[0, 1], :] = P[[1, 0], :]
-            losses, C_star, sim_net = self.optimize_C(
-                A, P @ B @ P.T, lr, iters, orthog=True, verbose=self.verbose
-            )
-            if losses[-1] < self.losses[-1]:
-                self.losses = losses
-                self.C_star = C_star @ P
-                self.sim_net = sim_net
+            if self.try_permutation:
+                # Optional fallback: swap first two indices in B and keep best fit.
+                P = torch.eye(B.shape[0], device=self.device)
+                if P.shape[0] > 1:
+                    P[[0, 1], :] = P[[1, 0], :]
+                losses, C_star, sim_net = self.optimize_C(
+                    A, P @ B @ P.T, lr, iters, orthog=True, verbose=self.verbose
+                )
+                if losses[-1] < self.losses[-1]:
+                    self.losses = losses
+                    self.C_star = C_star @ P
+                    self.sim_net = sim_net
 
     def _get_wasserstein_vars(self, A, B):
         # assert self.wasserstein_compare in {"sv", "eig","evec_angle", 'evec'}
@@ -350,7 +348,7 @@ class SimilarityTransformDist:
             # raise AssertionError("Wasserstein comparison of eigenvectors is not supported when \
             #  the number of elements in the sets are different")
             if self.verbose:
-                print(f"Padding the smaller set with zeros")
+                print("Padding the smaller set with zeros")
             if a.shape[0] < b.shape[0]:
                 a = torch.cat(
                     [a, torch.zeros(b.shape[0] - a.shape[0], a.shape[1])], dim=0
@@ -379,8 +377,10 @@ class SimilarityTransformDist:
         # scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.999)
 
         losses = []
-        A /= torch.linalg.norm(A)
-        B /= torch.linalg.norm(B)
+        # Avoid in-place ops: A/B may be shared cached tensors across comparisons.
+        A = A / torch.linalg.norm(A)
+        B = B / torch.linalg.norm(B)
+        no_improve = 0
         for _ in range(iters):
             # Zero the gradients of the optimizer.
             optimizer.zero_grad()
@@ -393,9 +393,12 @@ class SimilarityTransformDist:
             # if _ % 99:
             #     scheduler.step()
             losses.append(loss.item())
-            # TODO: add a flag for this
-            # if _ > 2 and abs(losses[-1] - losses[-2]) < self.eps: #early stopping
-            # break
+            if _ > 0 and abs(losses[-1] - losses[-2]) < self.eps:
+                no_improve += 1
+                if no_improve >= 5:
+                    break
+            else:
+                no_improve = 0
 
         if verbose:
             print("Finished optimizing C")
@@ -518,7 +521,7 @@ class SimilarityTransformDist:
         # Check if we have 2D matrices or 1D eigenvalues
         is_matrix = A.ndim == 2 and B.ndim == 2
         is_eigenvalues = A.ndim == 1 and B.ndim == 1
-        
+
         if is_matrix:
             assert A.shape[0] == B.shape[1] or self.wasserstein_compare is not None
             if A.shape[0] != B.shape[0]:
@@ -539,7 +542,9 @@ class SimilarityTransformDist:
             # For eigenvalues, different sizes are handled by padding in _get_wasserstein_vars
             pass
         else:
-            raise ValueError(f"A and B must both be 2D matrices or both be 1D eigenvalue arrays. Got shapes A: {A.shape}, B: {B.shape}")
+            raise ValueError(
+                f"A and B must both be 2D matrices or both be 1D eigenvalue arrays. Got shapes A: {A.shape}, B: {B.shape}"
+            )
 
         self.fit(
             A,
