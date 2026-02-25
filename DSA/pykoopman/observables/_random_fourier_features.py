@@ -74,13 +74,13 @@ class RandomFourierFeatures(BaseObservables):
             self: Returns a fitted RandomFourierFeatures instance.
         """
         x = validate_input(x)
-        
+
         # Handle lists and 3D by fitting on first element/trial
         if isinstance(x, list):
             x = x[0]  # Fit on first element
         if x.ndim == 3:
             x = x[0]  # Fit on first trial
-        
+
         # Now x is 2D, proceed as normal
         np.random.seed(self.random_state)
         self.n_consumed_samples = 0

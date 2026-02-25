@@ -97,13 +97,13 @@ class TimeDelay(BaseObservables):
         """
 
         x = validate_input(x)
-        
+
         # Handle lists and 3D by fitting on first element/trial
         if isinstance(x, list):
             x = x[0]  # Fit on first element
         if x.ndim == 3:
             x = x[0]  # Fit on first trial
-        
+
         # Now x is 2D, proceed as normal
         n_samples, n_features = x.shape
 

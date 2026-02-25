@@ -314,8 +314,7 @@ class ModesSelectionPAD21(BaseAnalyzer):
         residual_array = []
         for i in range(num_alpha):
             residual = np.linalg.norm(
-                X
-                - np.matmul(phi_tilde_scaled, coefs_enet_comp[:, :, i].T)[:num_data]
+                X - np.matmul(phi_tilde_scaled, coefs_enet_comp[:, :, i].T)[:num_data]
                 # computed the augmented but only compare the first half rows
             )
             residual /= np.linalg.norm(X)

@@ -64,7 +64,7 @@ class Polynomial(PolynomialFeatures, BaseObservables):
         """
         if degree == 0:
             raise ValueError(
-                "degree must be at least 1, otherwise inverse cannot be " "computed"
+                "degree must be at least 1, otherwise inverse cannot be computed"
             )
         super(Polynomial, self).__init__(
             degree=degree,
@@ -102,18 +102,18 @@ class Polynomial(PolynomialFeatures, BaseObservables):
             ValueError: If the input data is not valid.
         """
         x = validate_input(x)
-        
+
         # Handle lists and 3D by fitting on first element/trial
         if isinstance(x, list):
             x = x[0]  # Fit on first element
         if x.ndim == 3:
             x = x[0]  # Fit on first trial
-        
+
         # Now x is 2D, proceed as normal
         self.n_consumed_samples = 0
 
         super(Polynomial, self).fit(x.real, y)
-        
+
         # Set custom attributes that our code expects
         self.n_input_features_ = x.shape[1]
         # n_output_features_ is already set by superclass fit()

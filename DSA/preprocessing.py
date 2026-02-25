@@ -1,7 +1,6 @@
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.manifold import Isomap, LocallyLinearEmbedding
-from sklearn.decomposition import PCA
 from sklearn.pipeline import make_pipeline
 from sklearn.kernel_approximation import Nystroem
 
@@ -244,7 +243,12 @@ def nonlinear_dimensionality_reduction(
 
 
 def featurize_data(
-    data, method="id", pca_downsample=False, pca_n_components=3, include_state=False, **kwargs
+    data,
+    method="id",
+    pca_downsample=False,
+    pca_n_components=3,
+    include_state=False,
+    **kwargs,
 ):
     if data.ndim == 3:
         shape = data.shape

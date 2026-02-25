@@ -80,7 +80,7 @@ class EnsembleBaseRegressor(TransformedTargetRegressor):
 
         # transformers are designed to modify X which is 2d dimensional, we
         # need to modify y accordingly.
-        
+
         # Handle list inputs (convert to array if list)
         if isinstance(y, list):
             # Lists should be flattened by observable/flatten transformers
@@ -92,7 +92,7 @@ class EnsembleBaseRegressor(TransformedTargetRegressor):
             self._training_dim = y.ndim
             if y.ndim == 1:
                 y_for_transform = y.reshape(-1, 1)
-        
+
         self._fit_transformer(y_for_transform)
 
         # transform y and convert back to 1d array if needed

@@ -73,17 +73,17 @@ class PyDMDRegressor(BaseRegressor):
             raise ValueError("regressor must be a subclass of DMDBase from pydmd.")
         self.regressor = regressor
         # super(PyDMDRegressor, self).__init__(regressor)
-        if hasattr(regressor, '_tlsq_rank'):
+        if hasattr(regressor, "_tlsq_rank"):
             self.tlsq_rank = regressor._tlsq_rank
-        elif hasattr(regressor, '_dmd_operator_kwargs'):
-            self.tlsq_rank = regressor._dmd_operator_kwargs['tlsq_rank']
+        elif hasattr(regressor, "_dmd_operator_kwargs"):
+            self.tlsq_rank = regressor._dmd_operator_kwargs["tlsq_rank"]
         else:
             raise ValueError("can't find tlsq_rank")
-        
-        if hasattr(regressor._Atilde, '_svd_rank'):
+
+        if hasattr(regressor._Atilde, "_svd_rank"):
             self.svd_rank = regressor._Atilde._svd_rank
-        elif hasattr(regressor, '_dmd_operator_kwargs'):
-            self.svd_rank = regressor._dmd_operator_kwargs['svd_rank']
+        elif hasattr(regressor, "_dmd_operator_kwargs"):
+            self.svd_rank = regressor._dmd_operator_kwargs["svd_rank"]
         else:
             raise ValueError("can't find svd_rank")
         if regressor._Atilde is not None:
@@ -241,12 +241,10 @@ class PyDMDRegressor(BaseRegressor):
         """
 
         if not ("t0" in time_dict and "tend" in time_dict and "dt" in time_dict):
-            raise ValueError(
-                'time_dict must contain the keys "t0", ' '"tend" and "dt".'
-            )
+            raise ValueError('time_dict must contain the keys "t0", "tend" and "dt".')
         if len(time_dict) > 3:
             raise ValueError(
-                'time_dict must contain only the keys "t0", ' '"tend" and "dt".'
+                'time_dict must contain only the keys "t0", "tend" and "dt".'
             )
 
         self._original_time = DMDTimeDict(dict(time_dict))

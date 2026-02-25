@@ -15,10 +15,10 @@ setuptools.setup(
         "omegaconf",
         "pydmd",
         "tqdm",
-        "optht", #for havok in pykoopman
-        "derivative", #for pykoopman
+        "optht",  # for havok in pykoopman
+        "derivative",  # for pykoopman
         "prettytable",
-         "scipy",
+        "scipy",
         "scikit-learn",
         "matplotlib",
     ],

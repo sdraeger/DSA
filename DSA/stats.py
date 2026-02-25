@@ -130,7 +130,7 @@ def nmse(x, y, eps=1e-10):
     if variance < eps:
         # If x is constant (zero variance), NMSE is undefined
         # Return 0.0 if predictions are perfect, inf otherwise
-        return 0.0 if mse < eps else float('inf')
+        return 0.0 if mse < eps else float("inf")
     return mse / variance
 
 

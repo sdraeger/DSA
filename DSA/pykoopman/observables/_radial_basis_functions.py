@@ -125,13 +125,13 @@ class RadialBasisFunction(BaseObservables):
                 n_centers is not equal to centers.shape[1].
         """
         x = validate_input(x)
-        
+
         # Handle lists and 3D by fitting on first element/trial
         if isinstance(x, list):
             x = x[0]  # Fit on first element
         if x.ndim == 3:
             x = x[0]  # Fit on first trial
-        
+
         # Now x is 2D, proceed as normal
         n_samples, n_features = x.shape
         self.n_consumed_samples = 0
@@ -282,7 +282,7 @@ class RadialBasisFunction(BaseObservables):
                 y_ = r_squared * np.log(np.sqrt(r_squared))
                 y_[np.isnan(y_)] = 0
             elif self.rbf_type == "gauss":
-                y_ = np.exp(-self.kernel_width**2 * r_squared)
+                y_ = np.exp(-(self.kernel_width**2) * r_squared)
             elif self.rbf_type == "invquad":
                 y_ = np.reciprocal(1 + self.kernel_width**2 * r_squared)
             elif self.rbf_type == "invmultquad":

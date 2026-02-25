@@ -895,7 +895,9 @@ class GeneralizedDSA:
                 if not (self.method == "self-pairwise" and j >= i):
                     pairs.append((i, j))
 
-        if self.n_jobs != 1 and self.simdist.score_method != 'wasserstein': #wasserstein is already fast
+        if (
+            self.n_jobs != 1 and self.simdist.score_method != "wasserstein"
+        ):  # wasserstein is already fast
             n_jobs = self.n_jobs if self.n_jobs > 0 else -1
             if self.verbose:
                 print(

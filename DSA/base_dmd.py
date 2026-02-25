@@ -43,11 +43,11 @@ class BaseDMD(ABC):
 
         # SVD attributes - will be set by subclasses
         self.cumulative_explained_variance = None
-    
-    def _setup_device(self, device='cpu', use_torch=None):
+
+    def _setup_device(self, device="cpu", use_torch=None):
         """
         Smart device setup with graceful fallback and auto-detection.
-        
+
         Parameters
         ----------
         device : str or torch.device
@@ -56,7 +56,7 @@ class BaseDMD(ABC):
             Whether to use PyTorch. If None, auto-detected:
             - True if device contains 'cuda'
             - False otherwise (numpy is faster on CPU)
-        
+
         Returns
         -------
         tuple
@@ -64,22 +64,22 @@ class BaseDMD(ABC):
         """
         # Convert device to string for checking
         device_str = str(device).lower()
-        
+
         # Auto-detect use_torch if not specified
         if use_torch is None:
-            use_torch = 'cuda' in device_str
-        
+            use_torch = "cuda" in device_str
+
         # If CUDA requested, check availability
-        if 'cuda' in device_str:
+        if "cuda" in device_str:
             if not torch.cuda.is_available():
                 warnings.warn(
                     f"CUDA device '{device}' requested but CUDA is not available. "
                     "Falling back to CPU. "
                     "To use GPU acceleration, ensure PyTorch with CUDA support is installed.",
                     RuntimeWarning,
-                    stacklevel=3
+                    stacklevel=3,
                 )
-                device = 'cpu'
+                device = "cpu"
                 use_torch = False  # Use numpy on CPU for better performance
             else:
                 # CUDA is available, verify the specific device exists
@@ -93,17 +93,17 @@ class BaseDMD(ABC):
                         f"CUDA device '{device}' requested but not accessible: {e}. "
                         f"Falling back to CPU.",
                         RuntimeWarning,
-                        stacklevel=3
+                        stacklevel=3,
                     )
-                    device = 'cpu'
+                    device = "cpu"
                     use_torch = False
-        
+
         # Convert to torch.device if using torch
         if use_torch:
             device = torch.device(device)
         else:
             device = None  # Use numpy (no torch device needed)
-        
+
         return device, use_torch
 
     def _process_single_dataset(self, data):
@@ -244,7 +244,7 @@ class BaseDMD(ABC):
         if isinstance(x, torch.Tensor):
             return x.to(self.device)
         return torch.from_numpy(x).to(self.device)
-    
+
     def _to_numpy(self, x):
         """Convert torch tensor to numpy array."""
         if not self.use_torch or x is None:
@@ -252,7 +252,7 @@ class BaseDMD(ABC):
         if isinstance(x, torch.Tensor):
             return x.cpu().numpy()
         return x
-        
+
     def all_to_device(self, device="cpu"):
         """Move all tensor attributes to specified device."""
         for k, v in self.__dict__.items():

@@ -603,10 +603,10 @@ def val_matrix(matrix):
     elif isinstance(matrix, np.ndarray):
         mat = matrix
     else:
-        raise AssertionError(f" must be tensor, numpy array, or DMD object")
+        raise AssertionError(" must be tensor, numpy array, or DMD object")
 
     # Check matrix is square
     if mat.shape[0] != mat.shape[1]:
-        raise ValueError(f"matrix must be square")
+        raise ValueError("matrix must be square")
 
     return mat

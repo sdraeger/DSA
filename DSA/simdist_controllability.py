@@ -36,7 +36,9 @@ class ControllabilitySimilarityTransformDist:
         self.return_distance_components = return_distance_components
 
         if align_inputs:
-            raise ValueError("align inputs is not yet implemented correctly, please switch to align_inputs=False for now")
+            raise ValueError(
+                "align inputs is not yet implemented correctly, please switch to align_inputs=False for now"
+            )
 
     @staticmethod
     def compute_angular_dist(A, B):
@@ -59,7 +61,9 @@ class ControllabilitySimilarityTransformDist:
         return cos_sim
 
     def fit_score(self, A, B, A_control, B_control):
-        convert_np = lambda A: A.detach().cpu().numpy() if isinstance(A,torch.Tensor) else A
+        convert_np = (
+            lambda A: A.detach().cpu().numpy() if isinstance(A, torch.Tensor) else A
+        )
         A = convert_np(A)
         B = convert_np(B)
         A_control = convert_np(A_control)
@@ -176,7 +180,7 @@ class ControllabilitySimilarityTransformDist:
         U2, S2, V2t = np.linalg.svd(K2, full_matrices=False)
 
         C = U1 @ U2.T
-        #TODO: fix this to compute procrustes on individual blocks (B, AB, A^2B, etc)
+        # TODO: fix this to compute procrustes on individual blocks (B, AB, A^2B, etc)
         C_u = V2t.T @ V1t  # = V2 @ V1^T
 
         K2_aligned = C @ K2 @ C_u

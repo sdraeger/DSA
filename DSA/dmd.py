@@ -148,7 +148,7 @@ class DMD(BaseDMD):
         super().__init__(
             device=device, verbose=verbose, send_to_cpu=send_to_cpu, lamb=lamb
         )
-        
+
         # Smart device setup with graceful CUDA fallback
         # DMD always uses PyTorch, so use_torch=True
         self.device, self.use_torch = self._setup_device(device, use_torch=True)
@@ -213,10 +213,12 @@ class DMD(BaseDMD):
         # if parameters are provided, overwrite them from the init
         if data is not None:
             self.data = self._init_single_data(data)
-        
+
         # Ensure data is available
         if self.data is None:
-            raise ValueError("Data must be provided either at initialization or when calling fit()/compute_hankel().")
+            raise ValueError(
+                "Data must be provided either at initialization or when calling fit()/compute_hankel()."
+            )
 
         self.n_delays = self.n_delays if n_delays is None else n_delays
         self.delay_interval = (
@@ -310,7 +312,6 @@ class DMD(BaseDMD):
                 self.Vt_minus = torch.cat(Vt_minus_list, dim=0)
                 self.Vt_plus = torch.cat(Vt_plus_list, dim=0)
             else:
-
                 if V.numel() < self.H.numel():
                     raise ValueError(
                         "The dimension of the SVD of the Hankel matrix is smaller than the dimension of the Hankel matrix itself. \n \
@@ -417,7 +418,7 @@ class DMD(BaseDMD):
             @ self.Vt_plus[:, : self.rank]
         ).T
         self.A_v = A_v
-        self.A = A_v #for compatibility with pydmd
+        self.A = A_v  # for compatibility with pydmd
         self.A_havok_dmd = (
             self.U
             @ self.S_mat[: self.U.shape[1], : self.rank]
@@ -553,7 +554,7 @@ class DMD(BaseDMD):
         # if parameters are provided, overwrite them from the init
         self.steps_ahead = self.steps_ahead if steps_ahead is None else steps_ahead
         self.verbose = self.verbose if verbose is None else verbose
-        
+
         # Validate and set device with graceful fallback
         if device is not None:
             self.device, self.use_torch = self._setup_device(device, use_torch=None)

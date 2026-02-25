@@ -453,9 +453,7 @@ def _col_major_2darray(X):
         warn(
             "Input data matrix X has condition number {}. "
             """Consider preprocessing data, passing in augmented
-            data matrix, or regularization methods.""".format(
-                cond_number
-            )
+            data matrix, or regularization methods.""".format(cond_number)
         )
 
     return snapshots, snapshots_shape

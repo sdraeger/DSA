@@ -1,7 +1,6 @@
 import pytest
 import numpy as np
 from DSA import DSA
-from scipy.stats import ortho_group
 
 
 @pytest.mark.parametrize("seed", [5])
@@ -109,7 +108,7 @@ def test_dsa_1tomany(n, t, c, seed, nmodels):
     dsa = DSA(X, Y)
     sim = dsa.fit_score()
     assert isinstance(sim, np.ndarray)
-    assert sim.shape == (nmodels, )
+    assert sim.shape == (nmodels,)
 
 
 @pytest.mark.parametrize("n", [10])

@@ -131,13 +131,13 @@ class PrunedKoopman:
     @property
     def A(self):
         raise NotImplementedError(
-            "Pruning only happen in eigen-space. So no self.A " "but only self.lamda"
+            "Pruning only happen in eigen-space. So no self.A but only self.lamda"
         )
 
     @property
     def B(self):
         raise NotImplementedError(
-            "Pruning only for autonomous system rather than " "controlled system"
+            "Pruning only for autonomous system rather than controlled system"
         )
 
     @property

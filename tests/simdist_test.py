@@ -16,13 +16,13 @@ SIMTOL = 2e-2
 def test_simdist_convergent(seed, n, score_method, dtype, device):
     rng = np.random.default_rng(seed)
     X = rng.random(size=(n, n))
-   
+
     Q = ortho_group(seed=rng, dim=n).rvs()
     while np.linalg.det(Q) > 0:
         Q = ortho_group(seed=rng, dim=n).rvs()
     Y = Q @ X @ Q.T
     iters = 10000
-   
+
     # excessive but we just want to see that it converges
     sim = SimilarityTransformDist(
         lr=5e-3, iters=iters, score_method=score_method, device=device

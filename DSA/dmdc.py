@@ -109,7 +109,7 @@ class DMDc(BaseDMD):
         super().__init__(
             device=device, verbose=verbose, send_to_cpu=send_to_cpu, lamb=lamb
         )
-        
+
         # Smart device setup with graceful CUDA fallback
         # DMDc always uses PyTorch, so use_torch=True
         self.device, self.use_torch = self._setup_device(device, use_torch=True)
@@ -215,16 +215,14 @@ class DMDc(BaseDMD):
                 self.n = self.data.shape[1]
                 self.ntrials = 1
             self.is_list_data = False
-        
 
     def _check_same_shape(self):
-        if isinstance(self.data,(np.ndarray,torch.Tensor)):
+        if isinstance(self.data, (np.ndarray, torch.Tensor)):
             assert self.data.shape[:-1] == self.control_data.shape[:-1]
-        elif isinstance(self.data,list):
-
+        elif isinstance(self.data, list):
             assert len(self.data) == len(self.control_data)
 
-            for d,c in zip(self.data,self.control_data):
+            for d, c in zip(self.data, self.control_data):
                 assert d.shape[:-1] == c.shape[:-1]
 
     def compute_hankel(
@@ -356,13 +354,17 @@ class DMDc(BaseDMD):
             self.Sh
         )
 
-        self.Vht_minus, self.Vht_plus = self.get_plus_minus(self.Vh, self.H,self.H_shapes if self.is_list_data else None)
-        self.Vut_minus, _ = self.get_plus_minus(self.Vu, self.Hu,self.Hu_shapes if self.is_list_data else None)
+        self.Vht_minus, self.Vht_plus = self.get_plus_minus(
+            self.Vh, self.H, self.H_shapes if self.is_list_data else None
+        )
+        self.Vut_minus, _ = self.get_plus_minus(
+            self.Vu, self.Hu, self.Hu_shapes if self.is_list_data else None
+        )
 
         if self.verbose:
             print("SVDs computed!")
 
-    def get_plus_minus(self, V, H,H_shapes=None):
+    def get_plus_minus(self, V, H, H_shapes=None):
         if self.ntrials > 1:
             if self.is_list_data:
                 V_split = torch.split(V, self.H_row_counts, dim=0)
@@ -387,7 +389,6 @@ class DMDc(BaseDMD):
                 Vt_minus = torch.cat(Vt_minus_list, dim=0)
                 Vt_plus = torch.cat(Vt_plus_list, dim=0)
             else:
-
                 if V.numel() < H.numel():
                     raise ValueError(
                         "The dimension of the SVD of the Hankel matrix is smaller than the dimension of the Hankel matrix itself. \n \
@@ -505,7 +506,7 @@ class DMDc(BaseDMD):
         """
         # Overwrite parameters if provided
         self.verbose = self.verbose if verbose is None else verbose
-        
+
         # Validate and set device with graceful fallback
         if device is not None:
             self.device, self.use_torch = self._setup_device(device, use_torch=True)

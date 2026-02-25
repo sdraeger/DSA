@@ -169,9 +169,9 @@ class ConcatObservables(BaseObservables):
         """
         super(ConcatObservables, self).__init__()
         self.observables_list_ = observables_list_
-        assert hasattr(
-            self.observables_list_[0], "include_state"
-        ), "first observable must have `include_state' attribute"
+        assert hasattr(self.observables_list_[0], "include_state"), (
+            "first observable must have `include_state' attribute"
+        )
         self.include_state = self.observables_list_[0].include_state
 
     def fit(self, X, y=None):
@@ -208,7 +208,7 @@ class ConcatObservables(BaseObservables):
             X_for_shape = X[0]
         if X_for_shape.ndim == 3:
             X_for_shape = X_for_shape[0]
-        
+
         self.n_input_features_ = X_for_shape.shape[1]
 
         # total number of output features takes care of redundant identity features
@@ -222,7 +222,7 @@ class ConcatObservables(BaseObservables):
         )
         for obs in self.observables_list_[1:]:
             assert hasattr(obs, "include_state"), (
-                "observable Must have `include_state' " "attribute"
+                "observable Must have `include_state' attribute"
             )
             if obs_list_contain_state_counter > 1 and obs.include_state:
                 s += obs.n_output_features_ - obs.n_input_features_

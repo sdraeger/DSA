@@ -207,8 +207,7 @@ class HAVOK(BaseRegressor):
         y0 = (
             # np.linalg.inv(np.diag(self.svals[: self.svd_rank - 1]))
             # @
-            np.linalg.pinv(self._ur)
-            @ x.T
+            np.linalg.pinv(self._ur) @ x.T
         )
         sys = lti(
             self.state_matrix_,

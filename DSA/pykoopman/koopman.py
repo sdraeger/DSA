@@ -30,29 +30,29 @@ from .regression import PyDMDRegressor
 class FlattenTransformer(BaseEstimator, TransformerMixin):
     """
     Flatten various data structures to 2D for regressor consumption.
-    
+
     Handles:
     - 3D arrays (trials, time, features) → 2D (trials*time, features)
     - Lists of arrays → concatenated 2D
     - 2D arrays → pass through
     - 1D arrays → reshape to column vector
-    
+
     This transformer is inserted after observables to ensure regressors
     always receive 2D input, while allowing observables to process
     structured data (lists, 3D) that preserves trial boundaries.
     """
-    
+
     def fit(self, X, y=None):
         """Fit method - stateless transformer."""
         return self
-    
+
     def transform(self, X):
         """
         Flatten input to 2D array.
-        
+
         Args:
             X: Input data - can be list, 1D, 2D, or 3D array
-            
+
         Returns:
             2D numpy array suitable for regressor
         """
@@ -71,7 +71,7 @@ class FlattenTransformer(BaseEstimator, TransformerMixin):
                     else:
                         flattened.append(x)
             return np.vstack(flattened) if flattened else np.array([])
-        
+
         elif isinstance(X, np.ndarray):
             if X.ndim == 3:
                 # Flatten 3D: (trials, time, features) → (trials*time, features)
@@ -82,10 +82,10 @@ class FlattenTransformer(BaseEstimator, TransformerMixin):
             elif X.ndim == 1:
                 # Reshape to column vector
                 return X.reshape(-1, 1)
-        
+
         # Fallback - return as-is
         return X
-    
+
     def inverse_transform(self, X):
         """
         Inverse transform - not typically used in this pipeline.
@@ -163,7 +163,7 @@ class Koopman(BaseEstimator):
         if observables is None:
             observables = Identity()
         if regressor is None:
-            regressor = PyDMDRegressor(DMD(svd_rank=-1)) 
+            regressor = PyDMDRegressor(DMD(svd_rank=-1))
         if isinstance(regressor, DMDBase):
             regressor = PyDMDRegressor(regressor)
         elif not isinstance(regressor, (BaseRegressor)):
@@ -210,24 +210,24 @@ class Koopman(BaseEstimator):
             self.regressor, EDMDc
         ):
             raise ValueError(
-                "Control input u was passed, " "but self.regressor is not DMDc or EDMDc"
+                "Control input u was passed, but self.regressor is not DMDc or EDMDc"
             )
 
         # Create FlattenTransformer and composed transform function for Y
         # This ensures Y goes through same transformations as X (observable + flatten)
         flatten_transformer = FlattenTransformer()
-        
+
         def transform_y(y_data):
             """Apply observable transform then flatten for Y."""
             y_obs = self.observables.transform(y_data)
             y_flat = flatten_transformer.transform(y_obs)
             return y_flat
-        
+
         if y is None:  # or isinstance(self.regressor, PyDMDRegressor):
             # if there is only 1 trajectory OR regressor is PyDMD
             y_flag = True
             x, y, u = self.split_xy(x, u=u, offset=True)
-            
+
             if isinstance(self.regressor, HAVOK):
                 regressor = self.regressor
                 y_flag = False
@@ -277,7 +277,7 @@ class Koopman(BaseEstimator):
         # of states. but the output features can be really high
         self.n_input_features_ = self._pipeline.steps[0][1].n_input_features_
         self.n_output_features_ = self._pipeline.steps[0][1].n_output_features_
-        
+
         if hasattr(self._pipeline.steps[2][1], "n_control_features_"):
             self.n_control_features_ = self._pipeline.steps[2][1].n_control_features_
 
@@ -288,18 +288,22 @@ class Koopman(BaseEstimator):
             # Extract data for amplitude computation, handling 3D/list structures
             if hasattr(self.observables, "n_consumed_samples"):
                 n_samples_needed = 1 + self.observables.n_consumed_samples
-                
+
                 # Handle different input structures
                 if isinstance(x, np.ndarray) and x.ndim == 3:
                     # 3D: (trials, time, features) - take from first trial
                     x_for_amp = x[0, 0:n_samples_needed, :]
                 elif isinstance(x, list):
                     # List - take from first element
-                    x_for_amp = x[0][0:n_samples_needed] if isinstance(x[0], np.ndarray) else x[0]
+                    x_for_amp = (
+                        x[0][0:n_samples_needed]
+                        if isinstance(x[0], np.ndarray)
+                        else x[0]
+                    )
                 else:
                     # 2D (original behavior)
                     x_for_amp = x[0:n_samples_needed]
-                
+
                 self._amplitudes = np.abs(self.psi(x_for_amp.T))
             else:
                 # Non-temporal observables
@@ -312,7 +316,7 @@ class Koopman(BaseEstimator):
                 else:
                     # 2D (original behavior)
                     x_for_amp = x[0:1]
-                
+
                 self._amplitudes = np.abs(self.psi(x_for_amp.T))
         else:
             self._amplitudes = None
@@ -504,11 +508,11 @@ class Koopman(BaseEstimator):
         """
         check_is_fitted(self, "_pipeline")
         if isinstance(self.regressor, DMDBase):
-            raise ValueError("self.regressor " "has no A!")
+            raise ValueError("self.regressor has no A!")
         if hasattr(self._pipeline.steps[-1][1], "state_matrix_"):
             return self._pipeline.steps[-1][1].state_matrix_
         else:
-            raise ValueError("self.regressor" "has no state_matrix")
+            raise ValueError("self.regressorhas no state_matrix")
 
     @property
     def B(self):
@@ -674,45 +678,46 @@ class Koopman(BaseEstimator):
         # the _regressor.fit to update the model coefficients.
         # call this function with _regressor()
         return self._pipeline.steps[2][1]
+
     def split_xy(self, X, u=None, offset=True):
         """
         Split data into X and Y pairs with temporal offset.
-        
+
         Preserves input structure (list/2D/3D) so observables can handle
         trial boundaries appropriately. Does NOT flatten or transform -
         just performs the temporal split.
-        
+
         Args:
             X: Input data (1D, 2D array, 3D array, or list of arrays)
             u: Control input (same shape as X), optional
             offset: If True, split with temporal offset X[:-1], X[1:]
                     If False, return (X, X, u) - used when Y provided separately
-        
+
         Returns:
             Tuple (X_split, Y_split, u_split) preserving input structure
         """
         if not offset:
             # No split needed when Y provided separately
             return X, X, u
-        
+
         s1, s2 = -1, 1  # X[:-1], X[1:]
-        
+
         if isinstance(X, np.ndarray):
             if X.ndim == 1:
                 X = X.reshape(-1, 1)
-            
+
             if X.ndim == 2:
                 self.n_samples_, self.n_input_features_ = X.shape
                 self.n_trials_ = 1
                 u_split = u[:s1] if u is not None else None
                 return X[:s1], X[s2:], u_split
-            
+
             elif X.ndim == 3:
                 self.n_trials_, self.n_samples_, self.n_input_features_ = X.shape
                 # Keep 3D structure: (trials, time-1, features)
                 u_split = u[:, :s1, :] if u is not None else None
                 return X[:, :s1, :], X[:, s2:, :], u_split
-        
+
         elif isinstance(X, list):
             # Recursively process each element in list
             X_list, Y_list, u_list = [], [], []
@@ -724,6 +729,6 @@ class Koopman(BaseEstimator):
                 u_list.append(u_split)
             u_result = u_list if u is not None else None
             return X_list, Y_list, u_result
-        
+
         # Fallback for unknown types
         return X, X, u
